@@ -1,0 +1,41 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Env files (非常重要)
+.env
+.env.*
+!.env.example
+env
+
+# Logs
+logs/
+*.log
+
+# SQLite / local db
+*.db
+*.sqlite
+*.sqlite3
+
+# Cache
+.cache/
+tmp/
+*.cache.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# VSCode
+.vscode/
+
+# Build
+dist/
+build/
+
+# Mac
+.AppleDouble
+.LSOverride
