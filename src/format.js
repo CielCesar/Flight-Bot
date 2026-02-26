@@ -141,4 +141,100 @@ function formatResults(queryParams, results, meta = {}) {
   return header + `\nTop ${Math.min(N, used.length)}:\n` + lines.join("\n") + footer;
 }
 
-module.exports = { formatResults };
+function parseMs(iso) {
+  const t = Date.parse(iso);
+  return Number.isNaN(t) ? null : t;
+}
+
+function summarize(segments = []) {
+  if (!segments.length) return { stops: 999, depMs: null, arrMs: null };
+  const first = segments[0];
+  const last = segments[segments.length - 1];
+  const stops = Math.max(0, segments.length - 1);
+  return { stops, depMs: parseMs(first.dep), arrMs: parseMs(last.arr) };
+}
+
+// 复用你之前的 inferPreference（如果你已有，就别重复定义）
+// 这里假设你 format.js 里已经有 inferPreference(userText, queryParams)
+
+function enrich(results) {
+  return (results || []).map(r => {
+    const s = summarize(r.segments || []);
+    const price = Number(r.cashTotal ?? Infinity);
+    const duration = (s.depMs != null && s.arrMs != null) ? (s.arrMs - s.depMs) : Infinity;
+    return { r, s, price, duration };
+  });
+}
+
+function pickBest(enriched, pref) {
+  let arr = enriched;
+
+  if (pref.nonstop) {
+    const nonstopOnly = enriched.filter(x => x.s.stops === 0);
+    if (nonstopOnly.length) arr = nonstopOnly;
+  }
+
+  const sorted = [...arr].sort((a, b) => {
+    switch (pref.sortBy) {
+      case "stops":
+        return a.s.stops - b.s.stops || a.price - b.price;
+      case "earliest_arrival":
+        return (a.s.arrMs ?? Infinity) - (b.s.arrMs ?? Infinity) || a.price - b.price;
+      case "earliest_departure":
+        return (a.s.depMs ?? Infinity) - (b.s.depMs ?? Infinity) || a.price - b.price;
+      case "duration":
+        return a.duration - b.duration || a.price - b.price;
+      case "price":
+      default:
+        return a.price - b.price || a.s.stops - b.s.stops;
+    }
+  });
+
+  return sorted[0] || null;
+}
+
+function bestSignature(best) {
+  if (!best) return null;
+  const r = best.r;
+  const s0 = r.segments?.[0];
+  const sl = r.segments?.[r.segments.length - 1];
+  return JSON.stringify({
+    price: r.cashTotal,
+    cur: r.currency,
+    from: s0?.from,
+    to: sl?.to,
+    dep: s0?.dep,
+    arr: sl?.arr,
+    stops: best.s.stops,
+  });
+}
+
+// 越小越好（用于比较“更满足 criteria”）
+function bestScore(best, pref) {
+  if (!best) return Infinity;
+  switch (pref.sortBy) {
+    case "stops":
+      return best.s.stops * 1e9 + best.price; // stops 优先，再比价格
+    case "earliest_arrival":
+      return (best.s.arrMs ?? Infinity);
+    case "earliest_departure":
+      return (best.s.depMs ?? Infinity);
+    case "duration":
+      return best.duration;
+    case "price":
+    default:
+      // 如果直飞优先，这里已经通过 pickBest 的过滤实现了偏好
+      return best.price;
+  }
+}
+
+module.exports = {
+  // 你原本已有的导出保持
+  formatResults,
+  // 新增导出
+  enrich,
+  pickBest,
+  bestSignature,
+  bestScore,
+  inferPreference, // 如果你原本就有
+};
